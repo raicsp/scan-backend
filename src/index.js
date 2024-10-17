@@ -341,61 +341,27 @@ WHERE s.teacher_id = ?
   });
 });
 
+//fetch grade and section
+app.get('/classes', (req, res) => {
+  const teacherId = req.query.teacherId; // Get teacherId from query parameters
 
+  if (!teacherId) {
+      return res.status(400).json({ error: 'Teacher ID is required' });
+  }
 
-// // update student
-// app.put('/update-student/:studentID', (req, res) => {
-//   const studentID = req.params.studentID;
-//   const { name, gmail, profilePic, gender } = req.body;
+  const query = 'SELECT `class_id`, `grade_level`, `section` FROM `classes` WHERE `assigned_teacher_id` = ?';
 
-//   // Build SQL query dynamically based on which fields are provided
-//   let sql = 'UPDATE student SET ';
-//   const params = [];
-//   const fields = [];
+  db.query(query, [teacherId], (err, result) => {
+      if (err) {
+          return res.status(500).json({ error: 'Database query error' });
+      }
+      if (result.length === 0) {
+          return res.status(404).json({ error: 'No class found for the given teacher ID' });
+      }
 
-//   if (name) {
-//     fields.push('name = ?');
-//     params.push(name);
-//   }
-//   if (gmail) {
-//     fields.push('gmail = ?');
-//     params.push(gmail);
-//   }
-//   if (profilePic) {
-//     fields.push('profile_pic = ?');
-//     params.push(profilePic);
-//   }
-//   if (gender) {
-//     fields.push('gender = ?');
-//     params.push(gender);
-//   }
-  
-//   if (fields.length === 0) {
-//     return res.status(400).json({ status: 'error', message: 'No fields to update' });
-//   }
-
-//   sql += fields.join(', ') + ' WHERE studentID = ?';
-//   params.push(studentID);
-
-//   db.query(sql, params, (err, result) => {
-//     if (err) {
-//       console.error('SQL error:', err);
-//       return res.status(500).json({ status: 'error', message: 'Failed to update student' });
-//     }
-
-//     if (result.affectedRows === 0) {
-//       return res.status(404).json({ status: 'error', message: 'Student not found or no changes made' });
-//     }
-
-//     res.status(200).json({
-//       status: 'success',
-//       message: 'Student information updated successfully',
-//       data: { id: studentID, name, gmail, profilePic, gender }
-//     });
-//   });
-// });
-
-
+      res.json(result[0]); // Assuming the teacher is assigned to only one class
+  });
+});
 
 // Fetch students and their attendance by teacherId
 app.get('/students/:teacherId', (req, res) => {
@@ -715,10 +681,13 @@ app.get('/attendance/monthly', (req, res) => {
   const teacherId = req.query.teacherId;
 
   const weeklyQuery = `
-     SELECT DATE_FORMAT(date, '%b') AS month, COUNT(*) AS presentCount
-      FROM attendance
-      WHERE status = 'present' AND YEAR(date) = YEAR(CURDATE()) AND studentID IN (SELECT studentID FROM student WHERE teacher_Id = ?)
-      GROUP BY month
+   SELECT DATE_FORMAT(date, '%b') AS month, COUNT(*) AS presentCount
+FROM attendance
+WHERE status = 'present' 
+  AND YEAR(date) = YEAR(CURDATE()) 
+  AND studentID IN (SELECT studentID FROM student WHERE teacher_Id = 1)
+GROUP BY MONTH(date) -- Grouping by the numeric representation of the month
+ORDER BY MONTH(date);
   `;
 
   db.query(weeklyQuery, [teacherId], (err, weeklyResult) => {
@@ -896,7 +865,6 @@ app.get('/profile/:id', (req, res) => {
     });
   });
 });
-
 
 // notifications
 app.get('/notifications', (req, res) => {

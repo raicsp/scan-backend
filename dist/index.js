@@ -401,57 +401,30 @@ app.get('/students/:id', function (req, res) {
   });
 });
 
-// // update student
-// app.put('/update-student/:studentID', (req, res) => {
-//   const studentID = req.params.studentID;
-//   const { name, gmail, profilePic, gender } = req.body;
+//fetch grade and section
+app.get('/classes', function (req, res) {
+  var teacherId = req.query.teacherId; // Get teacherId from query parameters
 
-//   // Build SQL query dynamically based on which fields are provided
-//   let sql = 'UPDATE student SET ';
-//   const params = [];
-//   const fields = [];
-
-//   if (name) {
-//     fields.push('name = ?');
-//     params.push(name);
-//   }
-//   if (gmail) {
-//     fields.push('gmail = ?');
-//     params.push(gmail);
-//   }
-//   if (profilePic) {
-//     fields.push('profile_pic = ?');
-//     params.push(profilePic);
-//   }
-//   if (gender) {
-//     fields.push('gender = ?');
-//     params.push(gender);
-//   }
-
-//   if (fields.length === 0) {
-//     return res.status(400).json({ status: 'error', message: 'No fields to update' });
-//   }
-
-//   sql += fields.join(', ') + ' WHERE studentID = ?';
-//   params.push(studentID);
-
-//   db.query(sql, params, (err, result) => {
-//     if (err) {
-//       console.error('SQL error:', err);
-//       return res.status(500).json({ status: 'error', message: 'Failed to update student' });
-//     }
-
-//     if (result.affectedRows === 0) {
-//       return res.status(404).json({ status: 'error', message: 'Student not found or no changes made' });
-//     }
-
-//     res.status(200).json({
-//       status: 'success',
-//       message: 'Student information updated successfully',
-//       data: { id: studentID, name, gmail, profilePic, gender }
-//     });
-//   });
-// });
+  if (!teacherId) {
+    return res.status(400).json({
+      error: 'Teacher ID is required'
+    });
+  }
+  var query = 'SELECT `class_id`, `grade_level`, `section` FROM `classes` WHERE `assigned_teacher_id` = ?';
+  db.query(query, [teacherId], function (err, result) {
+    if (err) {
+      return res.status(500).json({
+        error: 'Database query error'
+      });
+    }
+    if (result.length === 0) {
+      return res.status(404).json({
+        error: 'No class found for the given teacher ID'
+      });
+    }
+    res.json(result[0]); // Assuming the teacher is assigned to only one class
+  });
+});
 
 // Fetch students and their attendance by teacherId
 app.get('/students/:teacherId', function (req, res) {
@@ -716,7 +689,7 @@ app.get('/attendance/weekly', function (req, res) {
 });
 app.get('/attendance/monthly', function (req, res) {
   var teacherId = req.query.teacherId;
-  var weeklyQuery = "\n     SELECT DATE_FORMAT(date, '%b') AS month, COUNT(*) AS presentCount\n      FROM attendance\n      WHERE status = 'present' AND YEAR(date) = YEAR(CURDATE()) AND studentID IN (SELECT studentID FROM student WHERE teacher_Id = ?)\n      GROUP BY month\n  ";
+  var weeklyQuery = "\n   SELECT DATE_FORMAT(date, '%b') AS month, COUNT(*) AS presentCount\nFROM attendance\nWHERE status = 'present' \n  AND YEAR(date) = YEAR(CURDATE()) \n  AND studentID IN (SELECT studentID FROM student WHERE teacher_Id = 1)\nGROUP BY MONTH(date) -- Grouping by the numeric representation of the month\nORDER BY MONTH(date);\n  ";
   db.query(weeklyQuery, [teacherId], function (err, weeklyResult) {
     if (err) {
       return res.status(500).send(err);
