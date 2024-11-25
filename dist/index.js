@@ -1,6 +1,10 @@
 "use strict";
 
 function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function (o) { return typeof o; } : function (o) { return o && "function" == typeof Symbol && o.constructor === Symbol && o !== Symbol.prototype ? "symbol" : typeof o; }, _typeof(o); }
+function _toConsumableArray(r) { return _arrayWithoutHoles(r) || _iterableToArray(r) || _unsupportedIterableToArray(r) || _nonIterableSpread(); }
+function _nonIterableSpread() { throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
+function _iterableToArray(r) { if ("undefined" != typeof Symbol && null != r[Symbol.iterator] || null != r["@@iterator"]) return Array.from(r); }
+function _arrayWithoutHoles(r) { if (Array.isArray(r)) return _arrayLikeToArray(r); }
 function _slicedToArray(r, e) { return _arrayWithHoles(r) || _iterableToArrayLimit(r, e) || _unsupportedIterableToArray(r, e) || _nonIterableRest(); }
 function _nonIterableRest() { throw new TypeError("Invalid attempt to destructure non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method."); }
 function _unsupportedIterableToArray(r, a) { if (r) { if ("string" == typeof r) return _arrayLikeToArray(r, a); var t = {}.toString.call(r).slice(8, -1); return "Object" === t && r.constructor && (t = r.constructor.name), "Map" === t || "Set" === t ? Array.from(r) : "Arguments" === t || /^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(t) ? _arrayLikeToArray(r, a) : void 0; } }
@@ -23,17 +27,19 @@ var bcrypt = require('bcryptjs');
 var multer = require('multer');
 var path = require('path');
 var fs = require('fs');
+var moment = require('moment');
+require('dotenv').config();
 var app = express();
-var port = 3000;
+var port = process.env.PORT;
 app.use(express.json({
   limit: '50mb'
 }));
 app.use(cors());
 var db = mysql.createConnection({
-  host: 'localhost',
-  user: 'root',
-  password: '',
-  database: 'scan'
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME
 });
 db.connect(function (err) {
   if (err) {
@@ -308,6 +314,61 @@ app.put('/update-student-data/:studentID', /*#__PURE__*/function () {
   };
 }());
 
+//update-student
+app.put('/update-student-image/:studentID', /*#__PURE__*/function () {
+  var _ref3 = _asyncToGenerator(/*#__PURE__*/_regeneratorRuntime().mark(function _callee3(req, res) {
+    var studentID, profile_pic, profilePicBuffer, sql, params;
+    return _regeneratorRuntime().wrap(function _callee3$(_context3) {
+      while (1) switch (_context3.prev = _context3.next) {
+        case 0:
+          studentID = req.params.studentID;
+          profile_pic = req.body.profile_pic;
+          if (profile_pic) {
+            _context3.next = 4;
+            break;
+          }
+          return _context3.abrupt("return", res.status(400).json({
+            error: 'Image data is required'
+          }));
+        case 4:
+          try {
+            profilePicBuffer = Buffer.from(profile_pic.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+            console.log('Decoded Image Buffer:', profilePicBuffer);
+            sql = 'UPDATE student SET profile_pic = ? WHERE studentID = ?';
+            params = [profilePicBuffer, studentID];
+            db.query(sql, params, function (err, result) {
+              if (err) {
+                console.error('SQL Error:', err);
+                return res.status(500).json({
+                  error: 'Database error'
+                });
+              }
+              if (result.affectedRows === 0) {
+                return res.status(404).json({
+                  error: 'Student not found'
+                });
+              }
+              res.status(200).json({
+                message: 'Profile picture updated successfully'
+              });
+            });
+          } catch (error) {
+            console.error('Image processing error:', error);
+            res.status(400).json({
+              error: 'Invalid image data'
+            });
+          }
+        case 5:
+        case "end":
+          return _context3.stop();
+      }
+    }, _callee3);
+  }));
+  return function (_x5, _x6) {
+    return _ref3.apply(this, arguments);
+  };
+}());
+
 //check email
 app.get('/check-email', function (req, res) {
   var email = req.query.email;
@@ -401,30 +462,57 @@ app.get('/students/:id', function (req, res) {
   });
 });
 
-//fetch grade and section
-app.get('/classes', function (req, res) {
-  var teacherId = req.query.teacherId; // Get teacherId from query parameters
+// // update student
+// app.put('/update-student/:studentID', (req, res) => {
+//   const studentID = req.params.studentID;
+//   const { name, gmail, profilePic, gender } = req.body;
 
-  if (!teacherId) {
-    return res.status(400).json({
-      error: 'Teacher ID is required'
-    });
-  }
-  var query = 'SELECT `class_id`, `grade_level`, `section` FROM `classes` WHERE `assigned_teacher_id` = ?';
-  db.query(query, [teacherId], function (err, result) {
-    if (err) {
-      return res.status(500).json({
-        error: 'Database query error'
-      });
-    }
-    if (result.length === 0) {
-      return res.status(404).json({
-        error: 'No class found for the given teacher ID'
-      });
-    }
-    res.json(result[0]); // Assuming the teacher is assigned to only one class
-  });
-});
+//   // Build SQL query dynamically based on which fields are provided
+//   let sql = 'UPDATE student SET ';
+//   const params = [];
+//   const fields = [];
+
+//   if (name) {
+//     fields.push('name = ?');
+//     params.push(name);
+//   }
+//   if (gmail) {
+//     fields.push('gmail = ?');
+//     params.push(gmail);
+//   }
+//   if (profilePic) {
+//     fields.push('profile_pic = ?');
+//     params.push(profilePic);
+//   }
+//   if (gender) {
+//     fields.push('gender = ?');
+//     params.push(gender);
+//   }
+
+//   if (fields.length === 0) {
+//     return res.status(400).json({ status: 'error', message: 'No fields to update' });
+//   }
+
+//   sql += fields.join(', ') + ' WHERE studentID = ?';
+//   params.push(studentID);
+
+//   db.query(sql, params, (err, result) => {
+//     if (err) {
+//       console.error('SQL error:', err);
+//       return res.status(500).json({ status: 'error', message: 'Failed to update student' });
+//     }
+
+//     if (result.affectedRows === 0) {
+//       return res.status(404).json({ status: 'error', message: 'Student not found or no changes made' });
+//     }
+
+//     res.status(200).json({
+//       status: 'success',
+//       message: 'Student information updated successfully',
+//       data: { id: studentID, name, gmail, profilePic, gender }
+//     });
+//   });
+// });
 
 // Fetch students and their attendance by teacherId
 app.get('/students/:teacherId', function (req, res) {
@@ -514,7 +602,7 @@ app.post('/update-attendance', function (req, res) {
   var currentDate = new Date().toISOString().split('T')[0]; // Get current date in YYYY-MM-DD format
 
   // Query to fetch students and their attendance for the current date
-  var fetchSql = "\n    SELECT s.studentID AS studentId, \n      s.name, \n      s.gmail, \n      s.gender, \n      s.profile_pic, \n      s.parent_contact, \n      s.p_name,\n      a.status\n    FROM student s\n    LEFT JOIN attendance a ON s.studentID = a.studentID AND a.date = CURDATE()\n    WHERE s.teacher_id = ?;\n  ";
+  var fetchSql = "\n    SELECT s.studentID AS studentId, \n      s.name, \n      s.gmail, \n      s.gender, \n      s.profile_pic, \n      s.parent_contact, \n      s.p_name,\n      s.srcode,\n      a.status\n    FROM student s\n    LEFT JOIN attendance a ON s.studentId = a.studentID AND a.date = CURDATE()\n    WHERE s.teacher_id = ?;\n  ";
   db.query(fetchSql, [teacherId], function (err, results) {
     if (err) {
       console.error('SQL error:', err);
@@ -529,8 +617,8 @@ app.post('/update-attendance', function (req, res) {
       if (!student.status) {
         // Mark as absent if no attendance record exists for the current date
         return new Promise(function (resolve, reject) {
-          var insertSql = 'INSERT INTO attendance (studentID, date, status) VALUES (?, ?, ?)';
-          db.query(insertSql, [student.studentID, currentDate, 'Absent'], function (err, result) {
+          var insertSql = "\n            INSERT INTO attendance (teacher_Id, studentID, date, status) \n            VALUES (?, ?, ?, ?)\n            ON DUPLICATE KEY UPDATE status = 'Absent';\n          ";
+          db.query(insertSql, [teacherId, student.studentId, currentDate, 'No Record'], function (err, result) {
             if (err) {
               console.error('SQL error:', err);
               return reject(err);
@@ -689,7 +777,7 @@ app.get('/attendance/weekly', function (req, res) {
 });
 app.get('/attendance/monthly', function (req, res) {
   var teacherId = req.query.teacherId;
-  var weeklyQuery = "\n   SELECT DATE_FORMAT(date, '%b') AS month, COUNT(*) AS presentCount\nFROM attendance\nWHERE status = 'present' \n  AND YEAR(date) = YEAR(CURDATE()) \n  AND studentID IN (SELECT studentID FROM student WHERE teacher_Id = 1)\nGROUP BY MONTH(date) -- Grouping by the numeric representation of the month\nORDER BY MONTH(date);\n  ";
+  var weeklyQuery = "\n    SELECT DATE_FORMAT(date, '%b') AS month, COUNT(*) AS presentCount\nFROM attendance\nWHERE status = 'present' \n  AND YEAR(date) = YEAR(CURDATE()) \n  AND studentID IN (SELECT studentID FROM student WHERE teacher_Id = ?)\nGROUP BY MONTH(date) \nORDER BY MONTH(date);\n  ";
   db.query(weeklyQuery, [teacherId], function (err, weeklyResult) {
     if (err) {
       return res.status(500).send(err);
@@ -856,6 +944,30 @@ app.get('/profile/:id', function (req, res) {
     });
   });
 });
+//fetch grade and section
+app.get('/classes', function (req, res) {
+  var teacherId = req.query.teacherId; // Get teacherId from query parameters
+
+  if (!teacherId) {
+    return res.status(400).json({
+      error: 'Teacher ID is required'
+    });
+  }
+  var query = 'SELECT `class_id`, `grade_level`, `section` FROM `classes` WHERE `assigned_teacher_id` = ?';
+  db.query(query, [teacherId], function (err, result) {
+    if (err) {
+      return res.status(500).json({
+        error: 'Database query error'
+      });
+    }
+    if (result.length === 0) {
+      return res.status(404).json({
+        error: 'No class found for the given teacher ID'
+      });
+    }
+    res.json(result[0]); // Assuming the teacher is assigned to only one class
+  });
+});
 
 // notifications
 app.get('/notifications', function (req, res) {
@@ -867,7 +979,7 @@ app.get('/notifications', function (req, res) {
   }
 
   // Query for students who are absent for more than 1 day and have no notification sent
-  var query = "\n    SELECT student.studentID, student.name, COUNT(attendance.status) AS absence_count \n    FROM attendance \n    JOIN student ON attendance.studentID = student.studentID \n    WHERE student.teacher_Id = ? \n      AND attendance.status = 'Absent' \n      AND student.notif IS NULL\n    GROUP BY attendance.studentID\n    HAVING absence_count > 1;\n  ";
+  var query = "\n    SELECT student.studentID, student.name, COUNT(attendance.status) AS absence_count \n  FROM attendance \n  JOIN student ON attendance.studentID = student.studentID \n  WHERE student.teacher_Id = ? \n    AND attendance.status = 'Absent' \n    AND student.notif IS NULL\n    AND MONTH(attendance.date) = MONTH(CURRENT_DATE)  -- Current month\n    AND YEAR(attendance.date) = YEAR(CURRENT_DATE)    -- Current year\n  GROUP BY attendance.studentID\n  HAVING absence_count > 1;\n  ";
   db.query(query, [teacherId], function (err, results) {
     if (err) throw err;
 
@@ -887,34 +999,293 @@ app.get('/notifications', function (req, res) {
 
 //update notif status
 app.put('/students/:studentId/notif', /*#__PURE__*/function () {
-  var _ref3 = _asyncToGenerator(/*#__PURE__*/_regeneratorRuntime().mark(function _callee3(req, res) {
+  var _ref4 = _asyncToGenerator(/*#__PURE__*/_regeneratorRuntime().mark(function _callee4(req, res) {
     var studentId, notif;
-    return _regeneratorRuntime().wrap(function _callee3$(_context3) {
-      while (1) switch (_context3.prev = _context3.next) {
+    return _regeneratorRuntime().wrap(function _callee4$(_context4) {
+      while (1) switch (_context4.prev = _context4.next) {
         case 0:
           studentId = req.params.studentId;
           notif = req.body.notif;
-          _context3.prev = 2;
-          _context3.next = 5;
+          _context4.prev = 2;
+          _context4.next = 5;
           return db.query('UPDATE student SET notif = ? WHERE studentID = ?', [notif, studentId]);
         case 5:
           res.status(200).send('Notification updated successfully');
-          _context3.next = 11;
+          _context4.next = 11;
           break;
         case 8:
-          _context3.prev = 8;
-          _context3.t0 = _context3["catch"](2);
+          _context4.prev = 8;
+          _context4.t0 = _context4["catch"](2);
           res.status(500).send('Error updating notification');
         case 11:
         case "end":
-          return _context3.stop();
+          return _context4.stop();
       }
-    }, _callee3, null, [[2, 8]]);
+    }, _callee4, null, [[2, 8]]);
   }));
-  return function (_x5, _x6) {
-    return _ref3.apply(this, arguments);
+  return function (_x7, _x8) {
+    return _ref4.apply(this, arguments);
   };
 }());
+app.post('/validate-names', function (req, res) {
+  var names = req.body.names;
+  if (!Array.isArray(names) || names.length === 0) {
+    return res.status(400).json({
+      error: 'Names should be a non-empty array'
+    });
+  }
+  var placeholders = names.map(function () {
+    return '?';
+  }).join(', ');
+  var sql = "SELECT * FROM student WHERE name IN (".concat(placeholders, ")");
+  db.query(sql, names, function (err, results) {
+    if (err) {
+      console.error('Error executing query:', err);
+      return res.status(500).json({
+        error: 'Database query error'
+      });
+    }
+    res.json({
+      matchedRecords: results
+    });
+  });
+});
+app.post('/update-attendance-status', /*#__PURE__*/function () {
+  var _ref5 = _asyncToGenerator(/*#__PURE__*/_regeneratorRuntime().mark(function _callee5(req, res) {
+    var _req$body10, studentID, teacher_Id, updateAttendanceStatus, result;
+    return _regeneratorRuntime().wrap(function _callee5$(_context5) {
+      while (1) switch (_context5.prev = _context5.next) {
+        case 0:
+          _req$body10 = req.body, studentID = _req$body10.studentID, teacher_Id = _req$body10.teacher_Id;
+          if (!(!studentID || !teacher_Id)) {
+            _context5.next = 3;
+            break;
+          }
+          return _context5.abrupt("return", res.status(400).json({
+            error: 'Missing required fields'
+          }));
+        case 3:
+          // Wrap db.query in a Promise
+          updateAttendanceStatus = function updateAttendanceStatus(studentID, teacher_Id) {
+            return new Promise(function (resolve, reject) {
+              db.query('UPDATE attendance SET status = ? WHERE studentID = ? AND teacher_Id = ? AND date = CURRENT_DATE()', ['Present', studentID, teacher_Id], function (err, result) {
+                if (err) {
+                  return reject(err); // Reject if there's an error
+                }
+                resolve(result); // Resolve with the result
+              });
+            });
+          };
+          _context5.prev = 4;
+          _context5.next = 7;
+          return updateAttendanceStatus(studentID, teacher_Id);
+        case 7:
+          result = _context5.sent;
+          if (result.affectedRows > 0) {
+            res.json({
+              success: true
+            });
+          } else {
+            res.status(404).json({
+              error: 'Attendance record not found'
+            });
+          }
+          _context5.next = 15;
+          break;
+        case 11:
+          _context5.prev = 11;
+          _context5.t0 = _context5["catch"](4);
+          console.error('Error updating attendance:', _context5.t0);
+          res.status(500).json({
+            error: 'Internal server error'
+          });
+        case 15:
+        case "end":
+          return _context5.stop();
+      }
+    }, _callee5, null, [[4, 11]]);
+  }));
+  return function (_x9, _x10) {
+    return _ref5.apply(this, arguments);
+  };
+}());
+app.post('/mark-absent-and-notify', /*#__PURE__*/function () {
+  var _ref6 = _asyncToGenerator(/*#__PURE__*/_regeneratorRuntime().mark(function _callee6(req, res) {
+    var _req$body11, teacher_Id, recognizedStudentIDs, findAbsentStudents, markStudentsAbsent, absentStudents, absentStudentIDs;
+    return _regeneratorRuntime().wrap(function _callee6$(_context6) {
+      while (1) switch (_context6.prev = _context6.next) {
+        case 0:
+          _req$body11 = req.body, teacher_Id = _req$body11.teacher_Id, recognizedStudentIDs = _req$body11.recognizedStudentIDs;
+          if (!(!teacher_Id || !Array.isArray(recognizedStudentIDs))) {
+            _context6.next = 3;
+            break;
+          }
+          return _context6.abrupt("return", res.status(400).json({
+            error: 'Missing required fields'
+          }));
+        case 3:
+          findAbsentStudents = function findAbsentStudents(teacher_Id, recognizedStudentIDs) {
+            return new Promise(function (resolve, reject) {
+              var placeholders = recognizedStudentIDs.map(function () {
+                return '?';
+              }).join(', ');
+              var sql = "\n        SELECT s.studentID, s.name, s.gmail\n        FROM attendance a\n        JOIN student s ON a.studentID = s.studentID\n        WHERE a.teacher_Id = ? AND a.date = CURRENT_DATE()\n        AND a.status = 'No Record'\n        AND s.studentID NOT IN (".concat(placeholders, ")\n      ");
+              db.query(sql, [teacher_Id].concat(_toConsumableArray(recognizedStudentIDs)), function (err, results) {
+                if (err) {
+                  return reject(err);
+                }
+                resolve(results);
+              });
+            });
+          };
+          markStudentsAbsent = function markStudentsAbsent(absentStudentIDs, teacher_Id) {
+            return new Promise(function (resolve, reject) {
+              var placeholders = absentStudentIDs.map(function () {
+                return '?';
+              }).join(', ');
+              var sql = "\n        UPDATE attendance \n        SET status = 'Absent'\n        WHERE teacher_Id = ? AND date = CURRENT_DATE() AND studentID IN (".concat(placeholders, ")\n      ");
+              db.query(sql, [teacher_Id].concat(_toConsumableArray(absentStudentIDs)), function (err, result) {
+                if (err) {
+                  return reject(err);
+                }
+                resolve(result);
+              });
+            });
+          };
+          _context6.prev = 5;
+          _context6.next = 8;
+          return findAbsentStudents(teacher_Id, recognizedStudentIDs);
+        case 8:
+          absentStudents = _context6.sent;
+          if (!(absentStudents.length === 0)) {
+            _context6.next = 11;
+            break;
+          }
+          return _context6.abrupt("return", res.json({
+            success: true,
+            message: 'No students to mark absent'
+          }));
+        case 11:
+          absentStudentIDs = absentStudents.map(function (student) {
+            return student.studentID;
+          }); // Step 2: Mark them as absent
+          _context6.next = 14;
+          return markStudentsAbsent(absentStudentIDs, teacher_Id);
+        case 14:
+          // Step 3: Return absent students for notifications
+          res.json({
+            success: true,
+            absentStudents: absentStudents
+          });
+          _context6.next = 21;
+          break;
+        case 17:
+          _context6.prev = 17;
+          _context6.t0 = _context6["catch"](5);
+          console.error('Error processing absent students:', _context6.t0);
+          res.status(500).json({
+            error: 'Internal server error'
+          });
+        case 21:
+        case "end":
+          return _context6.stop();
+      }
+    }, _callee6, null, [[5, 17]]);
+  }));
+  return function (_x11, _x12) {
+    return _ref6.apply(this, arguments);
+  };
+}());
+
+// Endpoint to check if the email exists in the database
+app.post('/email-check', function (req, res) {
+  var email = req.body.email;
+  var query = 'SELECT id, email FROM users WHERE email = ?';
+  db.query(query, [email], function (err, results) {
+    if (err) {
+      return res.status(500).json({
+        message: 'Database error'
+      });
+    }
+    if (results.length > 0) {
+      return res.json({
+        exists: true,
+        user: results[0]
+      });
+    } else {
+      return res.status(404).json({
+        exists: false,
+        message: 'Email not found'
+      });
+    }
+  });
+});
+
+// Endpoint to reset the password
+app.post('/reset-password', function (req, res) {
+  var _req$body12 = req.body,
+    userId = _req$body12.userId,
+    password = _req$body12.password;
+
+  // Hash the new password
+  var hashedPassword = bcrypt.hashSync(password, 8);
+  var query = 'UPDATE users SET password = ? WHERE id = ?';
+  db.query(query, [hashedPassword, userId], function (err, results) {
+    if (err) {
+      return res.status(500).json({
+        message: 'Database error'
+      });
+    }
+    if (results.affectedRows > 0) {
+      return res.json({
+        success: true,
+        message: 'Password reset successfully'
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Password reset failed'
+      });
+    }
+  });
+});
+app.get('/attendance-filtered/:id', function (req, res) {
+  var _req$query2 = req.query,
+    search = _req$query2.search,
+    startDate = _req$query2.startDate,
+    endDate = _req$query2.endDate;
+  var id = req.params.id; // Capture teacher_id from the route params
+
+  var query = "\n   SELECT \n  a.attendanceID, \n  a.teacher_Id, \n  a.studentID, \n  DATE_FORMAT(a.date, '%Y-%m-%d') AS date, \n  a.status, \n  s.name, \n  s.srcode\nFROM attendance a\nJOIN student s ON a.studentID = s.studentID\nWHERE s.teacher_id = ?\n\n  ";
+  var queryParams = [id]; // Start with teacher_id from route params
+
+  // Add search filter if provided
+  if (search) {
+    // Search both 'name' and 'srcode'
+    query += " AND (s.name LIKE ? OR s.srcode LIKE ?)"; // Assuming `srcode` is the student code
+    queryParams.push("%".concat(search, "%"), "%".concat(search, "%"));
+  }
+
+  // Add date range filter if provided
+  if (startDate && endDate) {
+    var start = moment(startDate, 'YYYY-MM-DD').format('YYYY-MM-DD');
+    var end = moment(endDate, 'YYYY-MM-DD').format('YYYY-MM-DD');
+    query += " AND a.date BETWEEN ? AND ?";
+    queryParams.push(start, end);
+  }
+
+  // Execute the query
+  db.query(query, queryParams, function (err, results) {
+    if (err) {
+      console.error('Error executing query:', err);
+      res.status(500).send('Internal server error');
+      return;
+    }
+
+    // Send back the filtered results as JSON
+    res.json(results);
+  });
+});
 app.listen(port, function () {
   console.log("Server running on port ".concat(port));
 });

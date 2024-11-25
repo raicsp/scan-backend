@@ -6,19 +6,21 @@ const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const moment = require('moment');
+require('dotenv').config(); 
+
 
 const app = express();
-const port = 3000;
-
+const port = process.env.PORT;
 app.use(express.json({ limit: '50mb' })); 
 app.use(cors()); 
 
 
 const db = mysql.createConnection({
-  host: 'localhost',
-  user: 'root',
-  password: '',
-  database: 'scan',
+  host: process.env.DB_HOST, 
+  user: process.env.DB_USER, 
+  password: process.env.DB_PASSWORD, 
+  database: process.env.DB_NAME, 
 });
 
 db.connect((err) => {
@@ -254,6 +256,39 @@ app.put('/update-student-data/:studentID', async (req, res) => {
   }
 });
 
+//update-student
+app.put('/update-student-image/:studentID', async (req, res) => {
+  const { studentID } = req.params;
+  const { profile_pic } = req.body;
+
+  if (!profile_pic) {
+    return res.status(400).json({ error: 'Image data is required' });
+  }
+
+  try {
+    const profilePicBuffer = Buffer.from(profile_pic.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+    console.log('Decoded Image Buffer:', profilePicBuffer);
+
+    const sql = 'UPDATE student SET profile_pic = ? WHERE studentID = ?';
+    const params = [profilePicBuffer, studentID];
+
+    db.query(sql, params, (err, result) => {
+      if (err) {
+        console.error('SQL Error:', err);
+        return res.status(500).json({ error: 'Database error' });
+      }
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ error: 'Student not found' });
+      }
+
+      res.status(200).json({ message: 'Profile picture updated successfully' });
+    });
+  } catch (error) {
+    console.error('Image processing error:', error);
+    res.status(400).json({ error: 'Invalid image data' });
+  }
+});
 
 //check email
 app.get('/check-email', (req, res) => {
@@ -341,27 +376,61 @@ WHERE s.teacher_id = ?
   });
 });
 
-//fetch grade and section
-app.get('/classes', (req, res) => {
-  const teacherId = req.query.teacherId; // Get teacherId from query parameters
 
-  if (!teacherId) {
-      return res.status(400).json({ error: 'Teacher ID is required' });
-  }
 
-  const query = 'SELECT `class_id`, `grade_level`, `section` FROM `classes` WHERE `assigned_teacher_id` = ?';
+// // update student
+// app.put('/update-student/:studentID', (req, res) => {
+//   const studentID = req.params.studentID;
+//   const { name, gmail, profilePic, gender } = req.body;
 
-  db.query(query, [teacherId], (err, result) => {
-      if (err) {
-          return res.status(500).json({ error: 'Database query error' });
-      }
-      if (result.length === 0) {
-          return res.status(404).json({ error: 'No class found for the given teacher ID' });
-      }
+//   // Build SQL query dynamically based on which fields are provided
+//   let sql = 'UPDATE student SET ';
+//   const params = [];
+//   const fields = [];
 
-      res.json(result[0]); // Assuming the teacher is assigned to only one class
-  });
-});
+//   if (name) {
+//     fields.push('name = ?');
+//     params.push(name);
+//   }
+//   if (gmail) {
+//     fields.push('gmail = ?');
+//     params.push(gmail);
+//   }
+//   if (profilePic) {
+//     fields.push('profile_pic = ?');
+//     params.push(profilePic);
+//   }
+//   if (gender) {
+//     fields.push('gender = ?');
+//     params.push(gender);
+//   }
+  
+//   if (fields.length === 0) {
+//     return res.status(400).json({ status: 'error', message: 'No fields to update' });
+//   }
+
+//   sql += fields.join(', ') + ' WHERE studentID = ?';
+//   params.push(studentID);
+
+//   db.query(sql, params, (err, result) => {
+//     if (err) {
+//       console.error('SQL error:', err);
+//       return res.status(500).json({ status: 'error', message: 'Failed to update student' });
+//     }
+
+//     if (result.affectedRows === 0) {
+//       return res.status(404).json({ status: 'error', message: 'Student not found or no changes made' });
+//     }
+
+//     res.status(200).json({
+//       status: 'success',
+//       message: 'Student information updated successfully',
+//       data: { id: studentID, name, gmail, profilePic, gender }
+//     });
+//   });
+// });
+
+
 
 // Fetch students and their attendance by teacherId
 app.get('/students/:teacherId', (req, res) => {
@@ -448,9 +517,10 @@ app.post('/update-attendance', (req, res) => {
       s.profile_pic, 
       s.parent_contact, 
       s.p_name,
+      s.srcode,
       a.status
     FROM student s
-    LEFT JOIN attendance a ON s.studentID = a.studentID AND a.date = CURDATE()
+    LEFT JOIN attendance a ON s.studentId = a.studentID AND a.date = CURDATE()
     WHERE s.teacher_id = ?;
   `;
 
@@ -465,8 +535,12 @@ app.post('/update-attendance', (req, res) => {
       if (!student.status) {
         // Mark as absent if no attendance record exists for the current date
         return new Promise((resolve, reject) => {
-          const insertSql = 'INSERT INTO attendance (studentID, date, status) VALUES (?, ?, ?)';
-          db.query(insertSql, [student.studentID, currentDate, 'Absent'], (err, result) => {
+          const insertSql = `
+            INSERT INTO attendance (teacher_Id, studentID, date, status) 
+            VALUES (?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE status = 'Absent';
+          `;
+          db.query(insertSql, [teacherId, student.studentId, currentDate, 'No Record'], (err, result) => {
             if (err) {
               console.error('SQL error:', err);
               return reject(err);
@@ -494,6 +568,7 @@ app.post('/update-attendance', (req, res) => {
       });
   });
 });
+
 
 //update attendance status
 app.post('/update-student-status', (req, res) => {
@@ -681,12 +756,12 @@ app.get('/attendance/monthly', (req, res) => {
   const teacherId = req.query.teacherId;
 
   const weeklyQuery = `
-   SELECT DATE_FORMAT(date, '%b') AS month, COUNT(*) AS presentCount
+    SELECT DATE_FORMAT(date, '%b') AS month, COUNT(*) AS presentCount
 FROM attendance
 WHERE status = 'present' 
   AND YEAR(date) = YEAR(CURDATE()) 
-  AND studentID IN (SELECT studentID FROM student WHERE teacher_Id = 1)
-GROUP BY MONTH(date) -- Grouping by the numeric representation of the month
+  AND studentID IN (SELECT studentID FROM student WHERE teacher_Id = ?)
+GROUP BY MONTH(date) 
 ORDER BY MONTH(date);
   `;
 
@@ -703,7 +778,7 @@ ORDER BY MONTH(date);
 app.get('/students/:id/filter', (req, res) => {
   const teacherId = req.params.id;
   const { startDate, endDate } = req.query;
-
+  
   // Adjust SQL query to use startDate and endDate
   const sql = `
 SELECT s.*, a.date AS attendanceDate, a.status AS attendanceStatus
@@ -865,6 +940,27 @@ app.get('/profile/:id', (req, res) => {
     });
   });
 });
+//fetch grade and section
+app.get('/classes', (req, res) => {
+  const teacherId = req.query.teacherId; // Get teacherId from query parameters
+
+  if (!teacherId) {
+      return res.status(400).json({ error: 'Teacher ID is required' });
+  }
+
+  const query = 'SELECT `class_id`, `grade_level`, `section` FROM `classes` WHERE `assigned_teacher_id` = ?';
+
+  db.query(query, [teacherId], (err, result) => {
+      if (err) {
+          return res.status(500).json({ error: 'Database query error' });
+      }
+      if (result.length === 0) {
+          return res.status(404).json({ error: 'No class found for the given teacher ID' });
+      }
+
+      res.json(result[0]); // Assuming the teacher is assigned to only one class
+  });
+});
 
 // notifications
 app.get('/notifications', (req, res) => {
@@ -877,13 +973,15 @@ app.get('/notifications', (req, res) => {
   // Query for students who are absent for more than 1 day and have no notification sent
   const query = `
     SELECT student.studentID, student.name, COUNT(attendance.status) AS absence_count 
-    FROM attendance 
-    JOIN student ON attendance.studentID = student.studentID 
-    WHERE student.teacher_Id = ? 
-      AND attendance.status = 'Absent' 
-      AND student.notif IS NULL
-    GROUP BY attendance.studentID
-    HAVING absence_count > 1;
+  FROM attendance 
+  JOIN student ON attendance.studentID = student.studentID 
+  WHERE student.teacher_Id = ? 
+    AND attendance.status = 'Absent' 
+    AND student.notif IS NULL
+    AND MONTH(attendance.date) = MONTH(CURRENT_DATE)  -- Current month
+    AND YEAR(attendance.date) = YEAR(CURRENT_DATE)    -- Current year
+  GROUP BY attendance.studentID
+  HAVING absence_count > 1;
   `;
 
   db.query(query, [teacherId], (err, results) => {
@@ -913,6 +1011,216 @@ app.put('/students/:studentId/notif', async (req, res) => {
   } catch (error) {
     res.status(500).send('Error updating notification');
   }
+});
+
+app.post('/validate-names', (req, res) => {
+  const { names } = req.body;
+
+  if (!Array.isArray(names) || names.length === 0) {
+    return res.status(400).json({ error: 'Names should be a non-empty array' });
+  }
+
+  const placeholders = names.map(() => '?').join(', ');
+  const sql = `SELECT * FROM student WHERE name IN (${placeholders})`;
+
+  db.query(sql, names, (err, results) => {
+    if (err) {
+      console.error('Error executing query:', err);
+      return res.status(500).json({ error: 'Database query error' });
+    }
+
+    res.json({ matchedRecords: results });
+  });
+});
+
+app.post('/update-attendance-status', async (req, res) => {
+  const { studentID, teacher_Id } = req.body;
+
+  if (!studentID || !teacher_Id) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  // Wrap db.query in a Promise
+  const updateAttendanceStatus = (studentID, teacher_Id) => {
+    return new Promise((resolve, reject) => {
+      db.query(
+        'UPDATE attendance SET status = ? WHERE studentID = ? AND teacher_Id = ? AND date = CURRENT_DATE()',
+        ['Present', studentID, teacher_Id],
+        (err, result) => {
+          if (err) {
+            return reject(err); // Reject if there's an error
+          }
+          resolve(result); // Resolve with the result
+        }
+      );
+    });
+  };
+
+  try {
+    const result = await updateAttendanceStatus(studentID, teacher_Id);
+
+    if (result.affectedRows > 0) {
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ error: 'Attendance record not found' });
+    }
+  } catch (error) {
+    console.error('Error updating attendance:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+app.post('/mark-absent-and-notify', async (req, res) => {
+  const { teacher_Id, recognizedStudentIDs } = req.body;
+
+  if (!teacher_Id || !Array.isArray(recognizedStudentIDs)) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  const findAbsentStudents = (teacher_Id, recognizedStudentIDs) => {
+    return new Promise((resolve, reject) => {
+      const placeholders = recognizedStudentIDs.map(() => '?').join(', ');
+      const sql = `
+        SELECT s.studentID, s.name, s.gmail
+        FROM attendance a
+        JOIN student s ON a.studentID = s.studentID
+        WHERE a.teacher_Id = ? AND a.date = CURRENT_DATE()
+        AND a.status = 'No Record'
+        AND s.studentID NOT IN (${placeholders})
+      `;
+
+      db.query(sql, [teacher_Id, ...recognizedStudentIDs], (err, results) => {
+        if (err) {
+          return reject(err);
+        }
+        resolve(results);
+      });
+    });
+  };
+
+  const markStudentsAbsent = (absentStudentIDs, teacher_Id) => {
+    return new Promise((resolve, reject) => {
+      const placeholders = absentStudentIDs.map(() => '?').join(', ');
+      const sql = `
+        UPDATE attendance 
+        SET status = 'Absent'
+        WHERE teacher_Id = ? AND date = CURRENT_DATE() AND studentID IN (${placeholders})
+      `;
+
+      db.query(sql, [teacher_Id, ...absentStudentIDs], (err, result) => {
+        if (err) {
+          return reject(err);
+        }
+        resolve(result);
+      });
+    });
+  };
+
+  try {
+    // Step 1: Find absent students
+    const absentStudents = await findAbsentStudents(teacher_Id, recognizedStudentIDs);
+
+    if (absentStudents.length === 0) {
+      return res.json({ success: true, message: 'No students to mark absent' });
+    }
+
+    const absentStudentIDs = absentStudents.map(student => student.studentID);
+
+    // Step 2: Mark them as absent
+    await markStudentsAbsent(absentStudentIDs, teacher_Id);
+
+    // Step 3: Return absent students for notifications
+    res.json({ success: true, absentStudents });
+  } catch (error) {
+    console.error('Error processing absent students:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Endpoint to check if the email exists in the database
+app.post('/email-check', (req, res) => {
+  const { email } = req.body;
+
+  const query = 'SELECT id, email FROM users WHERE email = ?';
+  db.query(query, [email], (err, results) => {
+    if (err) {
+      return res.status(500).json({ message: 'Database error' });
+    }
+    if (results.length > 0) {
+      return res.json({ exists: true, user: results[0] });
+    } else {
+      return res.status(404).json({ exists: false, message: 'Email not found' });
+    }
+  });
+});
+
+// Endpoint to reset the password
+app.post('/reset-password', (req, res) => {
+  const { userId, password } = req.body;
+
+  // Hash the new password
+  const hashedPassword = bcrypt.hashSync(password, 8);
+
+  const query = 'UPDATE users SET password = ? WHERE id = ?';
+  db.query(query, [hashedPassword, userId], (err, results) => {
+    if (err) {
+      return res.status(500).json({ message: 'Database error' });
+    }
+    if (results.affectedRows > 0) {
+      return res.json({ success: true, message: 'Password reset successfully' });
+    } else {
+      return res.status(400).json({ success: false, message: 'Password reset failed' });
+    }
+  });
+});
+
+
+app.get('/attendance-filtered/:id', (req, res) => {
+  const { search, startDate, endDate } = req.query;
+  const { id } = req.params; // Capture teacher_id from the route params
+
+  let query = `
+   SELECT 
+  a.attendanceID, 
+  a.teacher_Id, 
+  a.studentID, 
+  DATE_FORMAT(a.date, '%Y-%m-%d') AS date, 
+  a.status, 
+  s.name, 
+  s.srcode
+FROM attendance a
+JOIN student s ON a.studentID = s.studentID
+WHERE s.teacher_id = ?
+
+  `;
+
+  const queryParams = [id]; // Start with teacher_id from route params
+
+  // Add search filter if provided
+  if (search) {
+    // Search both 'name' and 'srcode'
+    query += ` AND (s.name LIKE ? OR s.srcode LIKE ?)`;  // Assuming `srcode` is the student code
+    queryParams.push(`%${search}%`, `%${search}%`);
+  }
+
+  // Add date range filter if provided
+  if (startDate && endDate) {
+    const start = moment(startDate, 'YYYY-MM-DD').format('YYYY-MM-DD');
+    const end = moment(endDate, 'YYYY-MM-DD').format('YYYY-MM-DD');
+    query += ` AND a.date BETWEEN ? AND ?`;
+    queryParams.push(start, end);
+  }
+
+  // Execute the query
+  db.query(query, queryParams, (err, results) => {
+    if (err) {
+      console.error('Error executing query:', err);
+      res.status(500).send('Internal server error');
+      return;
+    }
+
+    // Send back the filtered results as JSON
+    res.json(results);
+  });
 });
 
 app.listen(port, () => {
