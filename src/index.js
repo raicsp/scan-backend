@@ -16,12 +16,17 @@ app.use(express.json({ limit: '50mb' }));
 app.use(cors()); 
 
 
+const certPath = './ca.pem'; 
 const db = mysql.createConnection({
   host: process.env.DB_HOST, 
   user: process.env.DB_USER, 
   password: process.env.DB_PASSWORD, 
   database: process.env.DB_NAME, 
+  ssl: {
+    ca: fs.readFileSync(certPath),  // Read the CA certificate
+  }
 });
+
 
 db.connect((err) => {
   if (err) {
