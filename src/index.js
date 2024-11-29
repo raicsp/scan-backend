@@ -16,17 +16,12 @@ app.use(express.json({ limit: '50mb' }));
 app.use(cors()); 
 
 
-const certPath = './ca.pem'; 
 const db = mysql.createConnection({
   host: process.env.DB_HOST, 
   user: process.env.DB_USER, 
   password: process.env.DB_PASSWORD, 
   database: process.env.DB_NAME, 
-  ssl: {
-    ca: fs.readFileSync(certPath),  // Read the CA certificate
-  }
 });
-
 
 db.connect((err) => {
   if (err) {
@@ -1026,7 +1021,12 @@ app.post('/validate-names', (req, res) => {
   }
 
   const placeholders = names.map(() => '?').join(', ');
-  const sql = `SELECT * FROM student WHERE name IN (${placeholders})`;
+  const sql = `SELECT s.*, a.attendanceID, a.date, a.status
+  FROM student s
+  LEFT JOIN attendance a ON s.studentID = a.studentID
+  WHERE a.status = 'No Record'
+    AND s.name IN (${placeholders})
+    AND a.date = CURDATE()`;
 
   db.query(sql, names, (err, results) => {
     if (err) {
