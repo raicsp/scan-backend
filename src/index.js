@@ -756,13 +756,14 @@ app.get('/attendance/monthly', (req, res) => {
   const teacherId = req.query.teacherId;
 
   const weeklyQuery = `
-    SELECT DATE_FORMAT(date, '%b') AS month, COUNT(*) AS presentCount
+ SELECT DATE_FORMAT(MIN(date), '%b') AS month, COUNT(*) AS presentCount
 FROM attendance
-WHERE status = 'present' 
-  AND YEAR(date) = YEAR(CURDATE()) 
+WHERE status = 'Present'
+  AND YEAR(date) = YEAR(CURDATE())
   AND studentID IN (SELECT studentID FROM student WHERE teacher_Id = ?)
-GROUP BY MONTH(date) 
-ORDER BY MONTH(date);
+GROUP BY YEAR(date), MONTH(date)
+ORDER BY MONTH(date)
+;
   `;
 
   db.query(weeklyQuery, [teacherId], (err, weeklyResult) => {
