@@ -16,19 +16,27 @@ app.use(express.json({ limit: '50mb' }));
 app.use(cors()); 
 
 
-const db = mysql.createConnection({
-  host: process.env.DB_HOST, 
-  user: process.env.DB_USER, 
-  password: process.env.DB_PASSWORD, 
-  database: process.env.DB_NAME, 
+// Create a MySQL connection pool
+const db = mysql.createPool({
+  host: process.env.DB_HOST,      // Database host (use the external host IP)
+  user: process.env.DB_USER,      // Database username
+  password: process.env.DB_PASSWORD,  // Database password
+  database: process.env.DB_NAME,  // Database name
+  port: process.env.DB_PORT,      // Database port (7070 in your case)
+  waitForConnections: true,       // Wait for available connection if all are in use
+  connectionLimit: 10,            // Limit of concurrent connections
+  queueLimit: 0                   // Unlimited queue length
 });
 
-db.connect((err) => {
+// Test query to check if the connection works
+db.query('SELECT 1', (err, results) => {
   if (err) {
-    throw err;
+    console.error('Error connecting to the database:', err);
+  } else {
+    console.log('Database connected:', results);
   }
-  console.log('MySQL connected...');
 });
+
 
 
 // Register endpoint
